@@ -82,3 +82,7 @@ CONF_AVERAGE_PRICE = "average_price"
 
 # 预付费配置
 CONF_IS_PREPAID = "is_prepaid"
+
+# 数据库配置
+CONF_DB_RETENTION_DAYS = "db_retention_days"
+DEFAULT_DB_RETENTION_DAYS = 365
