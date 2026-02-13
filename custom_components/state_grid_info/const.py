@@ -1,7 +1,7 @@
 """Constants for the State Grid Info integration."""
 
 DOMAIN = "state_grid_info"
-NAME = "国家电网辅助信息"
+NAME = "国家电网辅助信息-jdm"
 
 # 数据来源选项
 DATA_SOURCE_HASSBOX = "hassbox"
@@ -14,7 +14,6 @@ DATA_SOURCE_NAMES = {
     DATA_SOURCE_HASSBOX: "HassBox集成",
     DATA_SOURCE_QINGLONG: "国网青龙脚本",
 }
-
 
 
 # 计费标准选项
