@@ -180,18 +180,24 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
     def _on_mqtt_message(self, client, userdata, msg):
         """Handle MQTT message."""
         try:
-            _LOGGER.debug("收到来自主题 %s 的消息", msg.topic)
+            _LOGGER.info("📨 收到来自主题 %s 的消息", msg.topic)
 
             receive_time = datetime.now()
 
             payload = json.loads(msg.payload.decode())
+            _LOGGER.info("📦 MQTT消息内容: %s", json.dumps(payload, ensure_ascii=False)[:500])
+            
             processed_data = self._process_qinglong_data(payload)
+            _LOGGER.info("🔄 处理后的数据 - dayList条数: %d, monthList条数: %d", 
+                        len(processed_data.get("dayList", [])),
+                        len(processed_data.get("monthList", [])))
 
             self.data = processed_data
             self.last_update_time = receive_time
 
             if self.db:
                 cons_no = self.config.get(CONF_STATE_GRID_ID, "")
+                _LOGGER.info("🔍 检查数据库连接 - db存在: True, cons_no: %s", cons_no)
                 if cons_no:
                     self.db.save_daily_data(cons_no, processed_data.get("dayList", []))
                     self.db.save_monthly_data(
@@ -203,7 +209,11 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                         processed_data.get("date", ""),
                     )
                     self.db.cleanup_old_data(cons_no, 365)
-                    _LOGGER.info("数据已保存到SQLite数据库")
+                    _LOGGER.info("✅ 数据已保存到SQLite数据库")
+                else:
+                    _LOGGER.warning("⚠️ cons_no 为空，无法保存到数据库")
+            else:
+                _LOGGER.warning("⚠️ 数据库对象不存在，无法保存数据")
 
             self.async_set_updated_data(self.data)
 
