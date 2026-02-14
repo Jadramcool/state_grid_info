@@ -18,7 +18,12 @@ class StateGridDatabase:
         self.hass = hass
 
         if db_path is None:
-            self.db_path = os.path.join(hass.config.config_dir, "state_grid_data.db")
+            data_dir = os.path.join(
+                hass.config.config_dir, "custom_components", "state_grid_info", "data"
+            )
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+            self.db_path = os.path.join(data_dir, "state_grid_data.db")
         else:
             self.db_path = db_path
 
@@ -119,7 +124,10 @@ class StateGridDatabase:
             _LOGGER.error("SQLite数据库初始化失败: %s", ex)
 
     def save_daily_data(self, cons_no: str, day_list: List[Dict[str, Any]]) -> int:
-        """Save daily electricity data to database."""
+        """Save daily electricity data to database.
+
+        已存在则更新，不存在则插入。
+        """
         _LOGGER.info(
             "💾 保存日用电数据: 户号=%s, 数据条数=%d",
             cons_no,
@@ -138,7 +146,9 @@ class StateGridDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
 
-            saved_count = 0
+            inserted_count = 0
+            updated_count = 0
+
             for item in day_list:
                 day = item.get("day", "")
                 if not day:
@@ -146,10 +156,20 @@ class StateGridDatabase:
 
                 cursor.execute(
                     """
+                    SELECT id FROM daily_electricity 
+                    WHERE cons_no = ? AND day = ?
+                    """,
+                    (cons_no, day),
+                )
+
+                exists = cursor.fetchone() is not None
+
+                cursor.execute(
+                    """
                     INSERT OR REPLACE INTO daily_electricity 
                     (cons_no, day, day_ele_num, day_ele_cost, day_tpq, day_ppq, day_npq, day_vpq, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
+                    """,
                     (
                         cons_no,
                         day,
@@ -161,19 +181,30 @@ class StateGridDatabase:
                         float(item.get("dayVPq", 0)),
                     ),
                 )
-                saved_count += 1
+
+                if exists:
+                    updated_count += 1
+                else:
+                    inserted_count += 1
 
             conn.commit()
             conn.close()
 
-            _LOGGER.info("✅ 成功保存了 %d 条日用电数据到数据库", saved_count)
-            return saved_count
+            _LOGGER.info(
+                "✅ 日用电数据保存完成: 新增 %d 条, 更新 %d 条",
+                inserted_count,
+                updated_count,
+            )
+            return inserted_count + updated_count
         except Exception as ex:
             _LOGGER.error("保存日用电数据失败: %s", ex)
             return 0
 
     def save_monthly_data(self, cons_no: str, month_list: List[Dict[str, Any]]) -> int:
-        """Save monthly electricity data to database."""
+        """Save monthly electricity data to database.
+
+        已存在则更新，不存在则插入。
+        """
         if not month_list:
             return 0
 
@@ -181,7 +212,9 @@ class StateGridDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
 
-            saved_count = 0
+            inserted_count = 0
+            updated_count = 0
+
             for item in month_list:
                 month = item.get("month", "")
                 if not month:
@@ -189,10 +222,20 @@ class StateGridDatabase:
 
                 cursor.execute(
                     """
+                    SELECT id FROM monthly_electricity 
+                    WHERE cons_no = ? AND month = ?
+                    """,
+                    (cons_no, month),
+                )
+
+                exists = cursor.fetchone() is not None
+
+                cursor.execute(
+                    """
                     INSERT OR REPLACE INTO monthly_electricity 
                     (cons_no, month, month_ele_num, month_ele_cost, month_tpq, month_ppq, month_npq, month_vpq, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
+                    """,
                     (
                         cons_no,
                         month,
@@ -204,13 +247,22 @@ class StateGridDatabase:
                         float(item.get("monthVPq", 0)),
                     ),
                 )
-                saved_count += 1
+
+                if exists:
+                    updated_count += 1
+                else:
+                    inserted_count += 1
 
             conn.commit()
             conn.close()
 
-            _LOGGER.debug("保存了 %d 条月用电数据到数据库", saved_count)
-            return saved_count
+            if inserted_count > 0 or updated_count > 0:
+                _LOGGER.info(
+                    "✅ 月用电数据保存完成: 新增 %d 条, 更新 %d 条",
+                    inserted_count,
+                    updated_count,
+                )
+            return inserted_count + updated_count
         except Exception as ex:
             _LOGGER.error("保存月用电数据失败: %s", ex)
             return 0
