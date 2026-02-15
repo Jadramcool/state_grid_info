@@ -22,9 +22,13 @@ class StateGridDatabase:
             self.db_path = os.path.join(data_dir, "state_grid_data.db")
         else:
             self.db_path = db_path
+            data_dir = os.path.dirname(db_path)
 
         self._connection: Optional[sqlite3.Connection] = None
-        _LOGGER.info("🗄️ 初始化SQLite数据库，路径: %s", self.db_path)
+        _LOGGER.info("🗄️ 初始化SQLite数据库")
+        _LOGGER.info("📁 __file__ = %s", os.path.abspath(__file__))
+        _LOGGER.info("📁 data_dir = %s", data_dir)
+        _LOGGER.info("📁 db_path = %s", self.db_path)
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
