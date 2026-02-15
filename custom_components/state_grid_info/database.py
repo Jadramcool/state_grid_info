@@ -18,7 +18,7 @@ class StateGridDatabase:
         self.hass = hass
 
         if db_path is None:
-            data_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = hass.config.path("custom_components", "state_grid_info")
             self.db_path = os.path.join(data_dir, "state_grid_data.db")
         else:
             self.db_path = db_path
@@ -26,7 +26,6 @@ class StateGridDatabase:
 
         self._connection: Optional[sqlite3.Connection] = None
         _LOGGER.info("🗄️ 初始化SQLite数据库")
-        _LOGGER.info("📁 __file__ = %s", os.path.abspath(__file__))
         _LOGGER.info("📁 data_dir = %s", data_dir)
         _LOGGER.info("📁 db_path = %s", self.db_path)
         self._init_db()
