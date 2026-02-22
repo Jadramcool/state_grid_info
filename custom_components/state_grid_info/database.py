@@ -18,9 +18,9 @@ class StateGridDatabase:
         self.hass = hass
 
         if db_path is None:
-            data_dir = os.path.join(
-                hass.config.config_dir, "custom_components", "state_grid_info"
-            )
+            data_dir = hass.config.path("state_grid_data")
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
             self.db_path = os.path.join(data_dir, "state_grid_data.db")
         else:
             self.db_path = db_path
