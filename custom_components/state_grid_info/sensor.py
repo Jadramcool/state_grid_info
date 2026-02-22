@@ -215,6 +215,9 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("✅ 数据已保存到SQLite数据库")
 
                     all_data = self.db.get_all_data(cons_no, 365)
+                    all_data["monthList"] = self._recalculate_monthly_time_data(
+                        all_data.get("dayList", []), all_data.get("monthList", [])
+                    )
                     all_data["yearList"] = self._process_year_data(
                         all_data.get("monthList", [])
                     )
@@ -323,6 +326,12 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                         if cons_no:
                             db_data = self.db.get_all_data(cons_no, 365)
                             if db_data.get("dayList"):
+                                db_data["monthList"] = (
+                                    self._recalculate_monthly_time_data(
+                                        db_data.get("dayList", []),
+                                        db_data.get("monthList", []),
+                                    )
+                                )
                                 db_data["yearList"] = self._process_year_data(
                                     db_data.get("monthList", [])
                                 )
@@ -1569,6 +1578,59 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.error("Error calculating month data: %s", ex)
             return None
+
+    def _recalculate_monthly_time_data(self, day_list, month_list):
+        """Recalculate monthly time-of-use data from daily data.
+
+        从数据库加载的日数据重新计算每月的分时电量。
+        """
+        try:
+            if not day_list or not month_list:
+                return month_list
+
+            updated_month_list = []
+            for month_item in month_list:
+                month_str = month_item.get("month", "")
+                year_month = month_str.replace("-", "")
+
+                days_in_month = [
+                    day
+                    for day in day_list
+                    if day.get("day", "").replace("-", "")[:6] == year_month
+                ]
+
+                if days_in_month:
+                    month_tpq = sum(
+                        float(day.get("dayTPq", 0)) for day in days_in_month
+                    )
+                    month_ppq = sum(
+                        float(day.get("dayPPq", 0)) for day in days_in_month
+                    )
+                    month_npq = sum(
+                        float(day.get("dayNPq", 0)) for day in days_in_month
+                    )
+                    month_vpq = sum(
+                        float(day.get("dayVPq", 0)) for day in days_in_month
+                    )
+
+                    updated_month_item = {
+                        "month": month_str,
+                        "monthEleNum": float(month_item.get("monthEleNum", 0)),
+                        "monthEleCost": float(month_item.get("monthEleCost", 0)),
+                        "monthTPq": round(month_tpq, 2),
+                        "monthPPq": round(month_ppq, 2),
+                        "monthNPq": round(month_npq, 2),
+                        "monthVPq": round(month_vpq, 2),
+                    }
+                else:
+                    updated_month_item = month_item
+
+                updated_month_list.append(updated_month_item)
+
+            return updated_month_list
+        except Exception as ex:
+            _LOGGER.error("Error recalculating monthly time data: %s", ex)
+            return month_list
 
     def _process_year_data(self, month_list):
         """Process and calculate yearly data from monthly data."""
