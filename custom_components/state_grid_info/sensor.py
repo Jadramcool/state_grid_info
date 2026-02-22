@@ -215,11 +215,15 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("✅ 数据已保存到SQLite数据库")
 
                     all_data = self.db.get_all_data(cons_no, 365)
+                    all_data["yearList"] = self._process_year_data(
+                        all_data.get("monthList", [])
+                    )
                     self.data = all_data
                     _LOGGER.info(
-                        "📊 从数据库加载全部数据 - dayList条数: %d, monthList条数: %d",
+                        "📊 从数据库加载全部数据 - dayList条数: %d, monthList条数: %d, yearList条数: %d",
                         len(all_data.get("dayList", [])),
                         len(all_data.get("monthList", [])),
+                        len(all_data.get("yearList", [])),
                     )
                 else:
                     _LOGGER.warning("⚠️ cons_no 为空，无法保存到数据库")
@@ -319,6 +323,9 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                         if cons_no:
                             db_data = self.db.get_all_data(cons_no, 365)
                             if db_data.get("dayList"):
+                                db_data["yearList"] = self._process_year_data(
+                                    db_data.get("monthList", [])
+                                )
                                 _LOGGER.info(
                                     "从数据库加载了 %d 条历史数据",
                                     len(db_data.get("dayList", [])),
