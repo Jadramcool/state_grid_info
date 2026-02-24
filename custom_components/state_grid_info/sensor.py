@@ -178,7 +178,7 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("MQTT连接失败，将在下次更新时重试")
 
     def _on_mqtt_message(self, client, userdata, msg):
-        """Handle MQTT message."""
+        """Handle MQTT message - only update database."""
         try:
             _LOGGER.info("📨 收到来自主题 %s 的消息", msg.topic)
 
@@ -214,31 +214,15 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                     self.db.cleanup_old_data(cons_no, 365)
                     _LOGGER.info("✅ 数据已保存到SQLite数据库")
 
-                    all_data = self.db.get_all_data(cons_no, 365)
-                    all_data["monthList"] = self._recalculate_monthly_time_data(
-                        all_data.get("dayList", []), all_data.get("monthList", [])
-                    )
-                    all_data["yearList"] = self._process_year_data(
-                        all_data.get("monthList", [])
-                    )
-                    self.data = all_data
-                    _LOGGER.info(
-                        "📊 从数据库加载全部数据 - dayList条数: %d, monthList条数: %d, yearList条数: %d",
-                        len(all_data.get("dayList", [])),
-                        len(all_data.get("monthList", [])),
-                        len(all_data.get("yearList", [])),
-                    )
+                    _LOGGER.info("🔄 触发数据刷新，从数据库重新加载")
+                    self.hass.async_create_task(self.async_refresh())
                 else:
                     _LOGGER.warning("⚠️ cons_no 为空，无法保存到数据库")
-                    self.data = processed_data
             else:
                 _LOGGER.warning("⚠️ 数据库对象不存在，无法保存数据")
-                self.data = processed_data
-
-            self.async_set_updated_data(self.data)
 
             _LOGGER.info(
-                "成功更新MQTT数据，接收时间: %s",
+                "MQTT数据处理完成，接收时间: %s",
                 receive_time.strftime("%Y-%m-%d %H:%M:%S"),
             )
         except json.JSONDecodeError as json_err:
@@ -265,40 +249,31 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("断开MQTT连接时出错: %s", ex)
 
     async def _async_update_data(self):
-        """Fetch data from the appropriate source."""
+        """Fetch data from database."""
         try:
-            # 记录当前更新时间
             current_time = datetime.now()
             time_diff = current_time - self.last_update_time
 
-            # 记录日志
             _LOGGER.debug(
                 "执行数据更新，距离上次更新已过 %s 分钟", time_diff.total_seconds() / 60
             )
 
-            # 更新时间戳
             self.last_update_time = current_time
 
             if self.config.get(CONF_DATA_SOURCE) == DATA_SOURCE_HASSBOX:
-                # 每次都重新从文件读取最新数据
-                # 强制刷新标志 - 如果超过10分钟没有更新，强制刷新
-                force_refresh = time_diff.total_seconds() > 600  # 10分钟
+                force_refresh = time_diff.total_seconds() > 600
                 if force_refresh:
                     _LOGGER.info("已超过10分钟未更新数据，强制刷新")
 
-                # 使用异步执行器运行文件读取操作
                 hassbox_data = await self.hass.async_add_executor_job(
                     self._fetch_hassbox_data
                 )
 
-                # 更新数据时间戳
                 self.last_update_time = current_time
 
-                # 清除过期标志
                 if isinstance(hassbox_data, dict):
                     hassbox_data["data_expired"] = False
 
-                # 更新 self.data
                 self.data = hassbox_data
                 return hassbox_data
 
@@ -319,31 +294,28 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                         self.mqtt_client.subscribe(topic)
                         _LOGGER.info("已重新订阅主题: %s", topic)
 
-                if not self.data or (time_diff.total_seconds() > 1800):
-                    _LOGGER.info("MQTT数据为空或已过期，尝试从数据库加载历史数据")
-                    if self.db:
-                        cons_no = self.config.get(CONF_STATE_GRID_ID, "")
-                        if cons_no:
-                            db_data = self.db.get_all_data(cons_no, 365)
-                            if db_data.get("dayList"):
-                                db_data["monthList"] = (
-                                    self._recalculate_monthly_time_data(
-                                        db_data.get("dayList", []),
-                                        db_data.get("monthList", []),
-                                    )
-                                )
-                                db_data["yearList"] = self._process_year_data(
-                                    db_data.get("monthList", [])
-                                )
-                                _LOGGER.info(
-                                    "从数据库加载了 %d 条历史数据",
-                                    len(db_data.get("dayList", [])),
-                                )
-                                self.data = db_data
-                                return db_data
-                    return {}
-
-                return self.data
+                if self.db:
+                    cons_no = self.config.get(CONF_STATE_GRID_ID, "")
+                    if cons_no:
+                        _LOGGER.info("📊 从数据库加载数据")
+                        db_data = self.db.get_all_data(cons_no, 365)
+                        if db_data.get("dayList"):
+                            db_data["monthList"] = self._recalculate_monthly_time_data(
+                                db_data.get("dayList", []),
+                                db_data.get("monthList", []),
+                            )
+                            db_data["yearList"] = self._process_year_data(
+                                db_data.get("monthList", [])
+                            )
+                            _LOGGER.info(
+                                "从数据库加载了 %d 天数据",
+                                len(db_data.get("dayList", [])),
+                            )
+                            self.data = db_data
+                            return db_data
+                        else:
+                            _LOGGER.info("数据库中暂无数据")
+                return {}
             return {}
         except Exception as ex:
             _LOGGER.error("Error updating State Grid Info data: %s", ex)
