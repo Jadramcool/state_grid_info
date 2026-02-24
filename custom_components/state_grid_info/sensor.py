@@ -178,7 +178,7 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("MQTT连接失败，将在下次更新时重试")
 
     def _on_mqtt_message(self, client, userdata, msg):
-        """Handle MQTT message - only update database."""
+        """Handle MQTT message - update database and refresh data."""
         try:
             _LOGGER.info("📨 收到来自主题 %s 的消息", msg.topic)
 
@@ -214,8 +214,23 @@ class StateGridInfoDataCoordinator(DataUpdateCoordinator):
                     self.db.cleanup_old_data(cons_no, 365)
                     _LOGGER.info("✅ 数据已保存到SQLite数据库")
 
-                    _LOGGER.info("🔄 触发数据刷新，从数据库重新加载")
-                    self.hass.async_create_task(self.async_refresh())
+                    _LOGGER.info("� 从数据库重新加载数据")
+                    all_data = self.db.get_all_data(cons_no, 365)
+                    all_data["monthList"] = self._recalculate_monthly_time_data(
+                        all_data.get("dayList", []), all_data.get("monthList", [])
+                    )
+                    all_data["yearList"] = self._process_year_data(
+                        all_data.get("monthList", [])
+                    )
+                    self.data = all_data
+                    _LOGGER.info(
+                        "📊 从数据库加载全部数据 - dayList条数: %d, monthList条数: %d, yearList条数: %d",
+                        len(all_data.get("dayList", [])),
+                        len(all_data.get("monthList", [])),
+                        len(all_data.get("yearList", [])),
+                    )
+                    
+                    self.hass.add_job(self.async_set_updated_data, self.data)
                 else:
                     _LOGGER.warning("⚠️ cons_no 为空，无法保存到数据库")
             else:
